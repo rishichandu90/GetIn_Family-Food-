@@ -15,9 +15,8 @@ interface Dish {
 }
 
 // Add these constants at the top after imports
-const BIN_ID = '65f2c0c8dc74654018a1c3c7';
-const API_KEY = '$2a$10$Gy5Hy4Hy4Hy4Hy4Hy4Hy4';
-const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
+const GIST_ID = '65f2d1c1dc74654018a1c6d4'; // Your public gist ID
+const GITHUB_TOKEN = process.env.REACT_APP_GITHUB_TOKEN;
 
 // Home Page Component
 const Home = () => {
@@ -36,26 +35,38 @@ const Home = () => {
 const DishesPage = ({ title, author }: { title: string, author?: string }) => {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Function to load dishes
+  // Function to load dishes - no auth needed for public gist
   const loadDishes = useCallback(() => {
-    fetch(JSONBIN_URL, {
-      headers: {
-        'X-Master-Key': API_KEY
-      }
-    })
+    setIsLoading(true);
+    fetch(`https://api.github.com/gists/${GIST_ID}`)
       .then(response => response.json())
       .then(data => {
-        const allDishes = data.record.dishes || [];
-        if (author) {
-          setDishes(allDishes.filter((dish: Dish) => dish.author === author));
+        console.log('Gist data:', data); // Debug log
+        if (data.files && data.files['dishes.json']) {
+          try {
+            const content = JSON.parse(data.files['dishes.json'].content);
+            const allDishes = content.dishes || [];
+            if (author) {
+              setDishes(allDishes.filter((dish: Dish) => dish.author === author));
+            } else {
+              setDishes(allDishes);
+            }
+          } catch (error) {
+            console.error('Error parsing dishes:', error);
+            setDishes([]);
+          }
         } else {
-          setDishes(allDishes);
+          setDishes([]);
         }
       })
       .catch(error => {
         console.error('Error loading dishes:', error);
         setDishes([]);
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
   }, [author]);
 
@@ -73,13 +84,18 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
   const handleAddDish = async (title: string, description: string, imageUrl: string) => {
     try {
       // First get current dishes
-      const response = await fetch(JSONBIN_URL, {
-        headers: {
-          'X-Master-Key': API_KEY
-        }
-      });
+      const response = await fetch(`https://api.github.com/gists/${GIST_ID}`);
       const data = await response.json();
-      const currentDishes = data.record.dishes || [];
+      let currentDishes = [];
+      
+      if (data.files && data.files['dishes.json']) {
+        try {
+          const content = JSON.parse(data.files['dishes.json'].content);
+          currentDishes = content.dishes || [];
+        } catch (error) {
+          console.error('Error parsing current dishes:', error);
+        }
+      }
 
       // Add new dish
       const newDish: Dish = {
@@ -93,15 +109,25 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
 
       const updatedDishes = [newDish, ...currentDishes];
 
-      // Update JSONBin
-      await fetch(JSONBIN_URL, {
-        method: 'PUT',
+      // Update Gist
+      const updateResponse = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        method: 'PATCH',
         headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
           'Content-Type': 'application/json',
-          'X-Master-Key': API_KEY
         },
-        body: JSON.stringify({ dishes: updatedDishes })
+        body: JSON.stringify({
+          files: {
+            'dishes.json': {
+              content: JSON.stringify({ dishes: updatedDishes })
+            }
+          }
+        })
       });
+
+      if (!updateResponse.ok) {
+        throw new Error('Failed to update dishes');
+      }
 
       loadDishes();
     } catch (error) {
@@ -112,26 +138,40 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
   const handleDeleteDish = async (id: string) => {
     try {
       // Get current dishes
-      const response = await fetch(JSONBIN_URL, {
-        headers: {
-          'X-Master-Key': API_KEY
-        }
-      });
+      const response = await fetch(`https://api.github.com/gists/${GIST_ID}`);
       const data = await response.json();
-      const currentDishes = data.record.dishes || [];
+      let currentDishes = [];
+      
+      if (data.files && data.files['dishes.json']) {
+        try {
+          const content = JSON.parse(data.files['dishes.json'].content);
+          currentDishes = content.dishes || [];
+        } catch (error) {
+          console.error('Error parsing current dishes:', error);
+        }
+      }
 
-      // Remove the dish
       const updatedDishes = currentDishes.filter((dish: Dish) => dish.id !== id);
 
-      // Update JSONBin
-      await fetch(JSONBIN_URL, {
-        method: 'PUT',
+      // Update Gist
+      const updateResponse = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        method: 'PATCH',
         headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
           'Content-Type': 'application/json',
-          'X-Master-Key': API_KEY
         },
-        body: JSON.stringify({ dishes: updatedDishes })
+        body: JSON.stringify({
+          files: {
+            'dishes.json': {
+              content: JSON.stringify({ dishes: updatedDishes })
+            }
+          }
+        })
       });
+
+      if (!updateResponse.ok) {
+        throw new Error('Failed to delete dish');
+      }
 
       loadDishes();
     } catch (error) {
@@ -156,7 +196,9 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
       {isAdmin && author && <AddDishForm onSubmit={handleAddDish} />}
 
       <div className="dishes-container">
-        {dishes.length === 0 ? (
+        {isLoading ? (
+          <p>Loading dishes...</p>
+        ) : dishes.length === 0 ? (
           <p className="no-dishes">No dishes available yet.</p>
         ) : (
           dishes.map(dish => (

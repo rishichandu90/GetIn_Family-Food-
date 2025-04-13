@@ -14,10 +14,10 @@ interface Dish {
   author: string;
 }
 
-// Add this at the top of the file, after imports
-const STORAGE_KEY = 'public_dishes';
-const GIST_ID = process.env.REACT_APP_GIST_ID;
-const GITHUB_TOKEN = process.env.REACT_APP_GITHUB_TOKEN;
+// Add these constants at the top after imports
+const BIN_ID = '65f2c0c8dc74654018a1c3c7';
+const API_KEY = '$2a$10$Gy5Hy4Hy4Hy4Hy4Hy4Hy4';
+const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
 // Home Page Component
 const Home = () => {
@@ -39,72 +39,31 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
 
   // Function to load dishes
   const loadDishes = useCallback(() => {
-    console.log('Loading dishes...'); // Debug log
-    try {
-      // Try to fetch from shared storage first
-      fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        headers: {
-          'Accept': 'application/vnd.github.v3+json'
+    fetch(JSONBIN_URL, {
+      headers: {
+        'X-Master-Key': API_KEY
+      }
+    })
+      .then(response => response.json())
+      .then(data => {
+        const allDishes = data.record.dishes || [];
+        if (author) {
+          setDishes(allDishes.filter((dish: Dish) => dish.author === author));
+        } else {
+          setDishes(allDishes);
         }
       })
-        .then(response => {
-          console.log('Fetch response:', response.status); // Debug log
-          return response.json();
-        })
-        .then(data => {
-          console.log('Gist data:', data); // Debug log
-          if (data.files && data.files['dishes.json']) {
-            const content = data.files['dishes.json'].content;
-            console.log('Dishes content:', content); // Debug log
-            let allDishes: Dish[] = [];
-            
-            try {
-              const parsedData = JSON.parse(content);
-              allDishes = parsedData.dishes || [];
-            } catch (e) {
-              console.error('Error parsing dishes:', e);
-              allDishes = [];
-            }
-
-            // Filter dishes based on author if we're on an author-specific page
-            if (author) {
-              setDishes(allDishes.filter((dish: Dish) => dish.author === author));
-            } else {
-              // On "All Dishes" page, show all dishes
-              setDishes(allDishes);
-            }
-          } else {
-            console.error('No dishes.json file found in Gist');
-            setDishes([]);
-          }
-        })
-        .catch(error => {
-          console.error('Error fetching dishes:', error);
-          // Fallback to localStorage if fetch fails
-          const localDishes = localStorage.getItem('public_dishes');
-          if (localDishes) {
-            const allDishes = JSON.parse(localDishes);
-            if (author) {
-              setDishes(allDishes.filter((dish: Dish) => dish.author === author));
-            } else {
-              setDishes(allDishes);
-            }
-          }
-        });
-    } catch (error) {
-      console.error('Error in loadDishes:', error);
-      setDishes([]);
-    }
+      .catch(error => {
+        console.error('Error loading dishes:', error);
+        setDishes([]);
+      });
   }, [author]);
 
   useEffect(() => {
-    // Check admin status
     const adminStatus = localStorage.getItem('isAdmin') === 'true';
     setIsAdmin(adminStatus);
-
-    // Load dishes - this will now always show dishes to everyone
     loadDishes();
-  }, [author, loadDishes]); // Add loadDishes to dependencies
+  }, [loadDishes]);
 
   const handleLogout = () => {
     localStorage.removeItem('isAdmin');
@@ -113,6 +72,16 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
 
   const handleAddDish = async (title: string, description: string, imageUrl: string) => {
     try {
+      // First get current dishes
+      const response = await fetch(JSONBIN_URL, {
+        headers: {
+          'X-Master-Key': API_KEY
+        }
+      });
+      const data = await response.json();
+      const currentDishes = data.record.dishes || [];
+
+      // Add new dish
       const newDish: Dish = {
         id: Date.now().toString(),
         date: new Date().toLocaleDateString(),
@@ -122,51 +91,18 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
         author: author || 'unknown'
       };
 
-      // First fetch current dishes from Gist
-      const response = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'Authorization': `Bearer ${GITHUB_TOKEN}`
-        }
-      });
-      
-      const data = await response.json();
-      let currentDishes: Dish[] = [];
-      
-      if (data.files && data.files['dishes.json']) {
-        try {
-          const content = data.files['dishes.json'].content;
-          const parsedData = JSON.parse(content);
-          currentDishes = parsedData.dishes || [];
-        } catch (e) {
-          console.error('Error parsing current dishes:', e);
-        }
-      }
-
-      // Add new dish to the beginning
       const updatedDishes = [newDish, ...currentDishes];
-      
-      // Update Gist with new dishes
-      await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        method: 'PATCH',
+
+      // Update JSONBin
+      await fetch(JSONBIN_URL, {
+        method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${GITHUB_TOKEN}`,
           'Content-Type': 'application/json',
-          'Accept': 'application/vnd.github.v3+json'
+          'X-Master-Key': API_KEY
         },
-        body: JSON.stringify({
-          files: {
-            'dishes.json': {
-              content: JSON.stringify({ dishes: updatedDishes })
-            }
-          }
-        })
+        body: JSON.stringify({ dishes: updatedDishes })
       });
 
-      // Also update localStorage for faster local access
-      localStorage.setItem('public_dishes', JSON.stringify(updatedDishes));
-      
-      // Reload dishes to update the display
       loadDishes();
     } catch (error) {
       console.error('Error adding dish:', error);
@@ -175,32 +111,28 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
 
   const handleDeleteDish = async (id: string) => {
     try {
-      const savedDishes = localStorage.getItem('public_dishes');
-      if (!savedDishes) return;
-
-      const allDishes = JSON.parse(savedDishes);
-      const updatedDishes = allDishes.filter((dish: Dish) => dish.id !== id);
-      
-      // Save to local storage
-      localStorage.setItem('public_dishes', JSON.stringify(updatedDishes));
-
-      // Update shared storage
-      await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        method: 'PATCH',
+      // Get current dishes
+      const response = await fetch(JSONBIN_URL, {
         headers: {
-          'Authorization': `Bearer ${GITHUB_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          files: {
-            'dishes.json': {
-              content: JSON.stringify(updatedDishes)
-            }
-          }
-        })
+          'X-Master-Key': API_KEY
+        }
       });
-      
-      // Reload dishes
+      const data = await response.json();
+      const currentDishes = data.record.dishes || [];
+
+      // Remove the dish
+      const updatedDishes = currentDishes.filter((dish: Dish) => dish.id !== id);
+
+      // Update JSONBin
+      await fetch(JSONBIN_URL, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Master-Key': API_KEY
+        },
+        body: JSON.stringify({ dishes: updatedDishes })
+      });
+
       loadDishes();
     } catch (error) {
       console.error('Error deleting dish:', error);

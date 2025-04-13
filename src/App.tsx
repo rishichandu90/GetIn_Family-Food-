@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import './App.css';
 import DishCard from './components/DishCard';
@@ -16,6 +16,8 @@ interface Dish {
 
 // Add this at the top of the file, after imports
 const STORAGE_KEY = 'public_dishes';
+const GIST_ID = process.env.REACT_APP_GIST_ID;
+const GITHUB_TOKEN = process.env.REACT_APP_GITHUB_TOKEN;
 
 // Home Page Component
 const Home = () => {
@@ -36,28 +38,50 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Function to load dishes
-  const loadDishes = () => {
+  const loadDishes = useCallback(() => {
     try {
-      // Always get dishes from localStorage
-      const savedDishes = localStorage.getItem('public_dishes');
-      let allDishes: Dish[] = [];
-      
-      if (savedDishes) {
-        allDishes = JSON.parse(savedDishes);
-      }
+      // Try to fetch from shared storage first
+      fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      })
+        .then(response => response.json())
+        .then(data => {
+          const savedDishes = data.files['dishes.json'].content;
+          let allDishes: Dish[] = [];
+          
+          if (savedDishes) {
+            allDishes = JSON.parse(savedDishes);
+          }
 
-      // Filter dishes based on author if we're on an author-specific page
-      if (author) {
-        setDishes(allDishes.filter(dish => dish.author === author));
-      } else {
-        // On "All Dishes" page, show all dishes
-        setDishes(allDishes);
-      }
+          // Filter dishes based on author if we're on an author-specific page
+          if (author) {
+            setDishes(allDishes.filter((dish: Dish) => dish.author === author));
+          } else {
+            // On "All Dishes" page, show all dishes
+            setDishes(allDishes);
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching dishes:', error);
+          // Fallback to localStorage if fetch fails
+          const localDishes = localStorage.getItem('public_dishes');
+          if (localDishes) {
+            const allDishes = JSON.parse(localDishes);
+            if (author) {
+              setDishes(allDishes.filter((dish: Dish) => dish.author === author));
+            } else {
+              setDishes(allDishes);
+            }
+          }
+        });
     } catch (error) {
       console.error('Error loading dishes:', error);
       setDishes([]);
     }
-  };
+  }, [author]); // Add author as dependency
 
   useEffect(() => {
     // Check admin status
@@ -66,14 +90,14 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
 
     // Load dishes - this will now always show dishes to everyone
     loadDishes();
-  }, [author]); // Reload when author changes
+  }, [author, loadDishes]); // Add loadDishes to dependencies
 
   const handleLogout = () => {
     localStorage.removeItem('isAdmin');
     setIsAdmin(false);
   };
 
-  const handleAddDish = (title: string, description: string, imageUrl: string) => {
+  const handleAddDish = async (title: string, description: string, imageUrl: string) => {
     try {
       const newDish: Dish = {
         id: Date.now().toString(),
@@ -91,8 +115,24 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
       // Add new dish to the beginning
       const updatedDishes = [newDish, ...allDishes];
       
-      // Save to public storage
+      // Save to local storage
       localStorage.setItem('public_dishes', JSON.stringify(updatedDishes));
+
+      // Update shared storage
+      await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: {
+            'dishes.json': {
+              content: JSON.stringify(updatedDishes)
+            }
+          }
+        })
+      });
       
       // Reload dishes to update the display
       loadDishes();
@@ -101,7 +141,7 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
     }
   };
 
-  const handleDeleteDish = (id: string) => {
+  const handleDeleteDish = async (id: string) => {
     try {
       const savedDishes = localStorage.getItem('public_dishes');
       if (!savedDishes) return;
@@ -109,8 +149,24 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
       const allDishes = JSON.parse(savedDishes);
       const updatedDishes = allDishes.filter((dish: Dish) => dish.id !== id);
       
-      // Save updated list to public storage
+      // Save to local storage
       localStorage.setItem('public_dishes', JSON.stringify(updatedDishes));
+
+      // Update shared storage
+      await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: {
+            'dishes.json': {
+              content: JSON.stringify(updatedDishes)
+            }
+          }
+        })
+      });
       
       // Reload dishes
       loadDishes();

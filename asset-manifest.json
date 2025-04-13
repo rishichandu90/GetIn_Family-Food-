@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/GetIn_Family-Food-/static/css/main.b13a1980.css",
-    "main.js": "/GetIn_Family-Food-/static/js/main.b334aa5f.js",
+    "main.js": "/GetIn_Family-Food-/static/js/main.d77acd86.js",
     "static/js/453.fbf952fc.chunk.js": "/GetIn_Family-Food-/static/js/453.fbf952fc.chunk.js",
     "index.html": "/GetIn_Family-Food-/index.html",
     "main.b13a1980.css.map": "/GetIn_Family-Food-/static/css/main.b13a1980.css.map",
-    "main.b334aa5f.js.map": "/GetIn_Family-Food-/static/js/main.b334aa5f.js.map",
+    "main.d77acd86.js.map": "/GetIn_Family-Food-/static/js/main.d77acd86.js.map",
     "453.fbf952fc.chunk.js.map": "/GetIn_Family-Food-/static/js/453.fbf952fc.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.b13a1980.css",
-    "static/js/main.b334aa5f.js"
+    "static/js/main.d77acd86.js"
   ]
 }

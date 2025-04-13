@@ -36,55 +36,24 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  // Function to load dishes - no auth needed for public gist
+  // Function to load dishes from localStorage
   const loadDishes = useCallback(() => {
     setIsLoading(true);
-    setError(null);
-    console.log('Loading dishes from Gist:', GIST_ID); // Debug log
-
-    fetch(`https://api.github.com/gists/${GIST_ID}`)
-      .then(response => {
-        console.log('Response status:', response.status); // Debug log
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        console.log('Gist data:', data); // Debug log
-        if (data.files && data.files['dishes.json']) {
-          try {
-            const content = JSON.parse(data.files['dishes.json'].content);
-            console.log('Parsed content:', content); // Debug log
-            const allDishes = content.dishes || [];
-            if (author) {
-              const filteredDishes = allDishes.filter((dish: Dish) => dish.author === author);
-              console.log('Filtered dishes:', filteredDishes); // Debug log
-              setDishes(filteredDishes);
-            } else {
-              console.log('All dishes:', allDishes); // Debug log
-              setDishes(allDishes);
-            }
-          } catch (error) {
-            console.error('Error parsing dishes:', error);
-            setError('Error parsing dishes data');
-            setDishes([]);
-          }
-        } else {
-          console.log('No dishes.json file found'); // Debug log
-          setDishes([]);
-        }
-      })
-      .catch(error => {
-        console.error('Error loading dishes:', error);
-        setError('Error loading dishes');
-        setDishes([]);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    try {
+      const savedDishes = localStorage.getItem('dishes');
+      const allDishes: Dish[] = savedDishes ? JSON.parse(savedDishes) : [];
+      
+      if (author) {
+        setDishes(allDishes.filter(dish => dish.author === author));
+      } else {
+        setDishes(allDishes);
+      }
+    } catch (error) {
+      console.error('Error loading dishes:', error);
+      setDishes([]);
+    }
+    setIsLoading(false);
   }, [author]);
 
   useEffect(() => {
@@ -100,21 +69,9 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
 
   const handleAddDish = async (title: string, description: string, imageUrl: string) => {
     try {
-      // First get current dishes
-      const response = await fetch(`https://api.github.com/gists/${GIST_ID}`);
-      const data = await response.json();
-      let currentDishes = [];
-      
-      if (data.files && data.files['dishes.json']) {
-        try {
-          const content = JSON.parse(data.files['dishes.json'].content);
-          currentDishes = content.dishes || [];
-        } catch (error) {
-          console.error('Error parsing current dishes:', error);
-        }
-      }
+      const savedDishes = localStorage.getItem('dishes');
+      const allDishes: Dish[] = savedDishes ? JSON.parse(savedDishes) : [];
 
-      // Add new dish
       const newDish: Dish = {
         id: Date.now().toString(),
         date: new Date().toLocaleDateString(),
@@ -124,28 +81,8 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
         author: author || 'unknown'
       };
 
-      const updatedDishes = [newDish, ...currentDishes];
-
-      // Update Gist
-      const updateResponse = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${GITHUB_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          files: {
-            'dishes.json': {
-              content: JSON.stringify({ dishes: updatedDishes })
-            }
-          }
-        })
-      });
-
-      if (!updateResponse.ok) {
-        throw new Error('Failed to update dishes');
-      }
-
+      const updatedDishes = [newDish, ...allDishes];
+      localStorage.setItem('dishes', JSON.stringify(updatedDishes));
       loadDishes();
     } catch (error) {
       console.error('Error adding dish:', error);
@@ -154,42 +91,13 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
 
   const handleDeleteDish = async (id: string) => {
     try {
-      // Get current dishes
-      const response = await fetch(`https://api.github.com/gists/${GIST_ID}`);
-      const data = await response.json();
-      let currentDishes = [];
+      const savedDishes = localStorage.getItem('dishes');
+      if (!savedDishes) return;
+
+      const allDishes: Dish[] = JSON.parse(savedDishes);
+      const updatedDishes = allDishes.filter(dish => dish.id !== id);
       
-      if (data.files && data.files['dishes.json']) {
-        try {
-          const content = JSON.parse(data.files['dishes.json'].content);
-          currentDishes = content.dishes || [];
-        } catch (error) {
-          console.error('Error parsing current dishes:', error);
-        }
-      }
-
-      const updatedDishes = currentDishes.filter((dish: Dish) => dish.id !== id);
-
-      // Update Gist
-      const updateResponse = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${GITHUB_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          files: {
-            'dishes.json': {
-              content: JSON.stringify({ dishes: updatedDishes })
-            }
-          }
-        })
-      });
-
-      if (!updateResponse.ok) {
-        throw new Error('Failed to delete dish');
-      }
-
+      localStorage.setItem('dishes', JSON.stringify(updatedDishes));
       loadDishes();
     } catch (error) {
       console.error('Error deleting dish:', error);
@@ -215,8 +123,6 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
       <div className="dishes-container">
         {isLoading ? (
           <p>Loading dishes...</p>
-        ) : error ? (
-          <p className="error-message">{error}</p>
         ) : dishes.length === 0 ? (
           <p className="no-dishes">No dishes available yet.</p>
         ) : (

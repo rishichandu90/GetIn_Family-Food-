@@ -34,13 +34,12 @@ const Home = () => {
 const DishesPage = ({ title, author }: { title: string, author?: string }) => {
   const [dishes, setDishes] = useState<Dish[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
-  const navigate = useNavigate();
 
   // Function to load dishes
   const loadDishes = () => {
     try {
       // Always get dishes from localStorage
-      const savedDishes = localStorage.getItem(STORAGE_KEY);
+      const savedDishes = localStorage.getItem('public_dishes');
       let allDishes: Dish[] = [];
       
       if (savedDishes) {
@@ -85,15 +84,15 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
         author: author || 'unknown'
       };
 
-      // Get current dishes
-      const savedDishes = localStorage.getItem(STORAGE_KEY);
+      // Get current dishes from public storage
+      const savedDishes = localStorage.getItem('public_dishes');
       const allDishes: Dish[] = savedDishes ? JSON.parse(savedDishes) : [];
       
       // Add new dish to the beginning
       const updatedDishes = [newDish, ...allDishes];
       
       // Save to public storage
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedDishes));
+      localStorage.setItem('public_dishes', JSON.stringify(updatedDishes));
       
       // Reload dishes to update the display
       loadDishes();
@@ -104,14 +103,14 @@ const DishesPage = ({ title, author }: { title: string, author?: string }) => {
 
   const handleDeleteDish = (id: string) => {
     try {
-      const savedDishes = localStorage.getItem(STORAGE_KEY);
+      const savedDishes = localStorage.getItem('public_dishes');
       if (!savedDishes) return;
 
       const allDishes = JSON.parse(savedDishes);
       const updatedDishes = allDishes.filter((dish: Dish) => dish.id !== id);
       
       // Save updated list to public storage
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedDishes));
+      localStorage.setItem('public_dishes', JSON.stringify(updatedDishes));
       
       // Reload dishes
       loadDishes();
